@@ -2,13 +2,15 @@
 
 환경변수
   DISCORD_WEBHOOK_URL  (필수) 디스코드 웹훅 주소
-  ANTHROPIC_API_KEY    (선택) 있으면 한국어로 번역해서 같이 올림
+  ANTHROPIC_API_KEY    (선택) 있으면 Claude로 번역, 없으면 무료 번역(구글 비공식)
+  NO_TRANSLATE=1       (선택) 번역 끄고 일본어 원문만
   FORCE=1              (선택) 오늘 방송분이 아니어도 강제 전송 (테스트용)
   DRY_RUN=1            (선택) 디스코드로 보내지 않고 콘솔에 출력
 """
 import json
 import os
 import sys
+import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
@@ -48,10 +50,30 @@ def fetch_today():
     return rows, day["onair_date"]
 
 
+def free_translate(text):
+    """구글 번역 비공식 무료 엔드포인트 (키 불필요, 막히면 예외)."""
+    if not text.strip():
+        return text
+    url = ("https://translate.googleapis.com/translate_a/single?client=gtx"
+           "&sl=ja&tl=ko&dt=t&q=" + urllib.parse.quote(text))
+    data = json.loads(http(url, headers={"User-Agent": "Mozilla/5.0"}))
+    return "".join(seg[0] for seg in data[0] if seg[0])
+
+
 def translate(rows):
-    """일본어 -> 한국어. 키가 없거나 실패하면 원문 유지."""
+    """일본어 -> 한국어. Claude 키가 있으면 Claude, 없으면 무료 번역, 실패하면 원문 유지."""
     key = os.getenv("ANTHROPIC_API_KEY")
     if not key:
+        if os.getenv("NO_TRANSLATE"):
+            return rows
+        try:
+            for r in rows:
+                r["msg_ko"] = " / ".join(free_translate(m) for m in r["msg"].split(" / "))
+                r["lucky_ko"] = free_translate(r["lucky"])
+        except Exception as e:
+            print(f"[warn] 무료 번역 실패, 원문으로 전송: {e}", file=sys.stderr)
+            for r in rows:
+                r.pop("msg_ko", None); r.pop("lucky_ko", None)
         return rows
     src = [{"i": i, "msg": r["msg"], "lucky": r["lucky"]} for i, r in enumerate(rows)]
     prompt = ("일본 아침방송 별자리 운세 문구를 자연스러운 한국어로 번역해줘. "
