@@ -1,0 +1,16 @@
+name: ohaasa-daily
+on:
+  schedule:
+    - cron: "30 22 * * 0-4"   # UTC 22:30 일~목 = KST/JST 07:30 월~금
+  workflow_dispatch: {}
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: python bot.py
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
